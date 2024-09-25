@@ -96,7 +96,7 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	// Define a struct to hold the incoming data
 	type PublicKeyCredential struct {
 		ID       string
-		RawId    string
+		RawId    interface{}
 		Type     string
 		response Response
 	}
@@ -137,12 +137,28 @@ func VerificationHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/register", RegisterHandler)
-	http.HandleFunc("/verification", VerificationHandler)
-	http.HandleFunc("/save", SaveHandler)
 
+	http.Handle("/register", corsMiddleware(http.HandlerFunc(RegisterHandler)))
+	http.Handle("/verification", corsMiddleware(http.HandlerFunc(VerificationHandler)))
+	http.Handle("/save", corsMiddleware(http.HandlerFunc(SaveHandler)))
 	log.Println("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Could not start server: %s\n", err.Error())
 	}
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")                            // Allow all origins, adjust as needed
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")          // Allowed methods
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization") // Allowed headers
+
+		// Handle preflight requests
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r) // Call the next handler
+	})
 }
