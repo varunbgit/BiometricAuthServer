@@ -89,16 +89,18 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type Response struct {
-		ClientDataJson    interface{}
-		AttestationObject interface{}
+	type AuthenticatorAssertionResponse struct {
+		AuthenticatorData []byte `json:"authenticatorData"`
+		ClientDataJSON    []byte `json:"clientDataJSON"`
+		Signature         []byte `json:"signature"`
+		UserHandle        []byte `json:"userHandle,omitempty"` // May be optional
 	}
 	// Define a struct to hold the incoming data
 	type PublicKeyCredential struct {
 		ID       string
 		RawId    interface{}
 		Type     string
-		response Response
+		response AuthenticatorAssertionResponse
 	}
 
 	// Parse the request body
