@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -81,45 +82,6 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-// SaveHandler handles the /save endpoint
-func SaveHandler(w http.ResponseWriter, r *http.Request) {
-	// Check if the request method is POST
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	type AuthenticatorAssertionResponse struct {
-		AuthenticatorData []byte `json:"authenticatorData"`
-		ClientDataJSON    []byte `json:"clientDataJSON"`
-		Signature         []byte `json:"signature"`
-		UserHandle        []byte `json:"userHandle,omitempty"` // May be optional
-	}
-	// Define a struct to hold the incoming data
-	type PublicKeyCredential struct {
-		ID       string
-		RawId    interface{}
-		Type     string
-		response AuthenticatorAssertionResponse
-	}
-
-	// Parse the request body
-	var saveRequest PublicKeyCredential
-	err := json.NewDecoder(r.Body).Decode(&saveRequest)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("Received data: ", saveRequest)
-
-	fmt.Println("printing the save request: ", saveRequest)
-	// Respond with a success message
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "success", "id": saveRequest.ID})
-}
-
 // VerificationHandler handles user verification
 func VerificationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -136,6 +98,75 @@ func VerificationHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("User verified successfully"))
+}
+
+// SaveHandler handles the /save endpoint
+func SaveHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if the request method is POST
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	type AuthenticatorAssertionResponse struct {
+		AuthenticatorData string `json:"authenticatorData"`
+		ClientDataJSON    string `json:"clientDataJSON"`
+		Signature         string `json:"signature"`
+		UserHandle        string `json:"userHandle,omitempty"` // May be optional
+	}
+	// Define a struct to hold the incoming data
+	type PublicKeyCredential struct {
+		ID       string
+		RawId    string
+		Type     string
+		response AuthenticatorAssertionResponse
+	}
+
+	fmt.Println("Printing the request body: ", r.Body)
+	// Parse the request body
+	var saveRequest PublicKeyCredential
+	err := json.NewDecoder(r.Body).Decode(&saveRequest)
+	if err != nil {
+		fmt.Println("the error is ", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	rawIdd, err := base64.StdEncoding.DecodeString(saveRequest.RawId)
+	if err != nil {
+		http.Error(w, "Failed to decode authenticatorData", http.StatusBadRequest)
+		return
+	}
+	fmt.Println("The raw id after data after decoding is ", rawIdd)
+
+	// Decode base64-encoded fields
+	//authData, err := base64.StdEncoding.DecodeString(saveRequest.response.AuthenticatorData)
+	//if err != nil {
+	//	http.Error(w, "Failed to decode authenticatorData", http.StatusBadRequest)
+	//	return
+	//}
+	//fmt.Println("The auth data after decoding is ", authData)
+	//
+	//clientData, err := base64.StdEncoding.DecodeString(saveRequest.response.ClientDataJSON)
+	//if err != nil {
+	//	http.Error(w, "Failed to decode clientDataJSON", http.StatusBadRequest)
+	//	return
+	//}
+	//fmt.Println("The client data after decoding is ", clientData)
+
+	log.Printf("Received data: ", saveRequest)
+	fmt.Println("Printing the request body ID: ", saveRequest.ID)
+	fmt.Println("Printing the request body raw Id: ", saveRequest.RawId)
+	fmt.Println("Printing the request body Type: ", saveRequest.Type)
+	fmt.Println("Printing the request body response.AuthenticatorData: ", saveRequest.response.AuthenticatorData)
+	fmt.Println("Printing the request body response.ClientDataJSON: ", saveRequest.response.ClientDataJSON)
+	fmt.Println("Printing the request body response.Signature: ", saveRequest.response.Signature)
+	fmt.Println("Printing the request body response.UserHandle: ", saveRequest.response.UserHandle)
+
+	// Respond with a success message
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success", "id": saveRequest.ID})
 }
 
 func main() {
