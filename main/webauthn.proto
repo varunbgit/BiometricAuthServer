@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package webauthn;
+
+import "google/protobuf/struct.proto";
+import "google/api/annotations.proto";
+
+option go_package = "./main/v1/webauthn;webauthnv1";
+
+service ParameterAPI {
+
+  rpc Create (CreateRequest) returns (Response) {
+    option (google.api.http) = {
+      post:"/v1/parameter" body:"*"
+    };
+  }
+}
+// Message representing the WebAuthn authenticator assertion response
+message AuthenticatorAssertionResponse {
+  bytes attestation_object = 1;
+  bytes client_data_json = 2;
+}
+
+// Message representing the WebAuthn PublicKeyCredential
+message PublicKeyCredential {
+  string id = 1;
+  bytes raw_id = 2;
+  string type = 3;
+  AuthenticatorAssertionResponse response = 4;
+}

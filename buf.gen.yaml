@@ -1,0 +1,13 @@
+version: v1
+plugins:
+  - name: go
+    out: ./rpc/
+  - name: go-grpc
+    out: rpc
+    opt:
+      - paths=source_relative
+  - name: grpc-gateway
+    out: rpc
+    opt:
+      - paths=source_relative
+      - allow_delete_body=true
