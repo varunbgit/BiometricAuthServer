@@ -1,16 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/go-webauthn/webauthn/User"
-	"github.com/go-webauthn/webauthn/main/helper"
+	"github.com/go-webauthn/webauthn/main/helper/db"
 	"github.com/go-webauthn/webauthn/protocol"
-	webauthnv1 "github.com/go-webauthn/webauthn/rpc/main/v1/webauthn"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"google.golang.org/protobuf/encoding/protojson"
-	"io/ioutil"
 	"log"
 	"net/http"
 )
@@ -18,28 +14,41 @@ import (
 var (
 	webAuthn *webauthn.WebAuthn
 	err      error
-	redis    map[string]interface{}
+	user     webauthn.User
+	session  *webauthn.SessionData
+	userID   string
+	userName string
+	wconfig  webauthn.Config
 )
 
 // Your initialization function
 func main() {
-	wconfig := &webauthn.Config{
-		RPDisplayName: "localhost", // Display Name for your site
-		RPID:          "localhost", // Generally the FQDN for your site
-		RPOrigins:     []string{"localhost"},
+	wconfig = webauthn.Config{
+		RPDisplayName: "localhost:5173", // Display Name for your site
+		RPID:          "localhost",      // Generally the FQDN for your site
+		RPOrigins:     []string{"http://localhost:5173"},
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
 			AuthenticatorAttachment: "platform",
-		}, // The origin URLs allowed for WebAuthn requests
+		},
+		AttestationPreference: protocol.PreferDirectAttestation, // The origin URLs allowed for WebAuthn requests
 	}
-	if webAuthn, err = webauthn.New(wconfig); err != nil {
+	if webAuthn, err = webauthn.New(&wconfig); err != nil {
 		fmt.Println(err)
 	}
 
-	redis = map[string]interface{}{}
+	userID = "0001"
+	userName = "bansal"
+
+	user = User.NewUser(userName, userID) //
+
+	db.Redis = map[string]webauthn.SessionData{}
+	db.CdpDB = map[string]webauthn.Credential{}
 
 	http.Handle("/register", corsMiddleware(http.HandlerFunc(RegisterHandler)))
 	//http.Handle("/verification", corsMiddleware(http.HandlerFunc(VerificationHandler)))
 	http.Handle("/save", corsMiddleware(http.HandlerFunc(SaveHandler)))
+	http.Handle("/create_verify_options", corsMiddleware(http.HandlerFunc(BeginLogin)))
+
 	log.Println("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Could not start server: %s\n", err.Error())
@@ -54,132 +63,104 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
+	//	==================================================================================	=======================================================================
+	// Now lets start with the Verification of credentials received.
 
-	fmt.Println("Printing the request body: ", r.Body)
-	// Parse the request body
-	//var saveRequest PublicKeyCredential
-	//err := json.NewDecoder(body).Decode(&saveRequest)
-
-	var credential webauthnv1.PublicKeyCredential
-	err = protojson.Unmarshal(body, &credential)
-
-	if err != nil {
-		fmt.Println("the error is ", err)
-		http.Error(w, "err unmarshalling into proto ,Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("Received data: ", credential)
-	fmt.Println("Printing the request body ID: ", credential.Id)
-	fmt.Println("Printing the request body raw Id: ", credential.RawId)
-	fmt.Println("Printing the request body raw Id direct typecasting: ", string(credential.RawId))
-	//fmt.Println("Printing the request body raw Id hex format: ", hex.EncodeToString(credential.RawId))
-	//fmt.Println("Printing the request body raw Id base64.std Endcoding format: ", base64.StdEncoding.EncodeToString(credential.RawId))
-
-	fmt.Println("Printing the request body Type: ", credential.Type)
-	fmt.Println("Printing the request body response.AttestationObject: ", credential.Response.AttestationObject)
-	//fmt.Println("Printing the request body AuthenticatorData base64.std Endcoding format: ", base64.StdEncoding.EncodeToString(credential.Response.AuthenticatorData))
-	fmt.Println("Printing the request body response.ClientDataJSON: ", credential.Response.ClientDataJson)
-	fmt.Println("Printing the request body Client Data Json base64.std Endcoding format: ", base64.StdEncoding.EncodeToString(credential.Response.ClientDataJson))
-	//fmt.Println("Printing the request body response.Signature: ", credential.Response.Signature)
-	//fmt.Println("Printing the request body Signature base64.std Endcoding format: ", base64.StdEncoding.EncodeToString(credential.Response.Signature))
-	//fmt.Println("Printing the request body response.UserHandle: ", credential.Response.UserHandle)
-	//fmt.Println("Printing the request body User handler base64.std Endcoding format: ", base64.StdEncoding.EncodeToString(credential.Response.UserHandle))
-
-	//// Step 1: Decode the Base64 attestationObject
-	//decoded, err := decodeBase64AttestationObject(credential.Response.AuthenticatorData)
-	//if err != nil {
-	//	http.Error(w, fmt.Sprintf("Failed to decode attestationObject: %s", err), http.StatusBadRequest)
-	//	return
-	//}
-
-	// Step 2: Parse the CBOR attestation object
-	attestation, err := helper.ParseAttestationObject(credential.Response.AttestationObject)
-	if err != nil {
-		fmt.Println("The error while parsing attestionObject", err)
-		http.Error(w, fmt.Sprintf("Failed to parse attestationObject: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	// Step 3: Process and validate the authData
-	err = helper.ProcessAuthData(attestation.AuthData)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to process authData: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	credId, err := helper.ExtractCredentialID(attestation.AuthData)
-
-	fmt.Println("the credential ID is: ", credId)
-
-	//================client data json========
-	var clientDataJsonObject helper.ClientDataJSON
-
-	err = json.Unmarshal(credential.Response.ClientDataJson, &clientDataJsonObject)
-	if err != nil {
+	parsedCredentialData, err1 := protocol.ParseCredentialCreationResponse(r)
+	if err1 != nil {
+		e := fmt.Errorf("Error while parsing client Response: %s", err)
+		fmt.Println(e)
 		http.Error(w, "Failed to unmarshal clientDataJSON", http.StatusBadRequest)
 		return
 	}
 
-	fmt.Println("The sent challenge was: ", clientDataJsonObject.Challenge)
-	fmt.Println("The sent origin was: ", clientDataJsonObject.Origin)
-	fmt.Println("The sent type was: ", clientDataJsonObject.Type)
-	// Respond with a success message
+	//todo get the session details from Redis
+	sessionFromDB := db.Redis[userID]
 
-}
+	//todo this needs to be removed
+	parsedCredentialData.Response.CollectedClientData.Challenge = sessionFromDB.Challenge
+	//webAuthn.Config.RPID = "http://localhost:5173"
+	//todo above line is just for testing
 
-func VerificationHandler(w http.ResponseWriter, r *http.Request) {
+	credential, err2 := webAuthn.CreateCredential(user, sessionFromDB, parsedCredentialData)
+	if err2 != nil {
+		fmt.Println("There is some error verifying Credential after registration: ", err2.Error())
+	}
 
+	fmt.Println(userID)
+	fmt.Println(*credential)
+
+	db.CdpDB[userID] = *credential
+	w.WriteHeader(http.StatusCreated)
+
+	fmt.Println("Hurray! verification of registration credentials successful")
+
+	return
 }
 
 func BeginLogin(w http.ResponseWriter, r *http.Request) {
-	//user := datastore.GetUser() // Find the user
-	//
-	//options, session, err := webAuthn.BeginLogin(user)
-	//if err != nil {
-	//	// Handle Error and return.
-	//
-	//	return
-	//}
 
-	// todo store the session values
-	//datastore.SaveSession(session)
-	//
-	//JSONResponse(w, options, http.StatusOK) // todo return the options generated
-	// options.publicKey contain our registration options
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	options, session1, err1 := webAuthn.BeginLogin(user)
+	if err1 != nil {
+		// Handle Error and return.
+		fmt.Println("Some error occurred in starting the login")
+		return
+	}
+
+	fmt.Println("options generated are: ", options.Response)
+
+	jsonData, err2 := json.Marshal(options)
+	if err2 != nil {
+		fmt.Println("There is some error in unmarshalling")
+	}
+
+	_, err = w.Write(jsonData)
+	if err != nil {
+		http.Error(w, "error while writing to json", 500)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+
+	//storing session data
+	key := userID
+	db.Redis[key] = *session1
+
+	w.WriteHeader(http.StatusOK)
+
 }
 
-func FinishLogin(w http.ResponseWriter, r *http.Request) {
-	//user := datastore.GetUser() // Get the user
-	//user := User.NewUser("Varun,", "8955")
-	//
-	//// Get the session data stored from the function above
-	//session := redis[user.ID]
-	//
-	//credential, err := webAuthn.FinishLogin(user, session.(webauthn.SessionData), r)
-	//if err != nil {
-	//	// Handle Error and return.
-	//
-	//	return
-	//}
-	//
-	//// Handle credential.Authenticator.CloneWarning
-	//
-	//// If login was successful, update the credential object
-	//// Pseudocode to update the user credential.
-	//user.UpdateCredential(credential)
-	//datastore.SaveUser(user)
-	//
-	//JSONResponse(w, "Login Success", http.StatusOK)
-}
+//func FinishLogin(w http.ResponseWriter, r *http.Request) {
+////	//user := datastore.GetUser() // Get the user
+////	//user := User.NewUser("Varun,", "8955")
+////	//
+////	//// Get the session data stored from the function above
+//	session := db.Redis[userID]
+////	//
+//	credential, err := webAuthn.FinishLogin(user, session, r)
+//	if err != nil {
+//		// Handle Error and return.
+//
+////	//	return
+////	//}
+////	//
+////	//// Handle credential.Authenticator.CloneWarning
+////	//
+////	//// If login was successful, update the credential object
+////	//// Pseudocode to update the user credential.
+////	//user.UpdateCredential(credential)
+////	//datastore.SaveUser(user)
+////	//
+////	//JSONResponse(w, "Login Success", http.StatusOK)
+//}
 
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	createOptions, session, err := BeginRegistration()
+	var createOptions *protocol.CredentialCreation
+	createOptions, session, err = BeginRegistration()
 	fmt.Println("Printing the Create Options:  ", createOptions)
 	jsonData, err := json.Marshal(createOptions.Response)
 	if err != nil {
@@ -196,11 +177,11 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	//storing session data
 	key := string(session.UserID)
-	redis[key] = session
+	db.Redis[key] = *session
 }
 
 func BeginRegistration() (*protocol.CredentialCreation, *webauthn.SessionData, error) {
-	user := User.NewUser("Varun,", "8955") // Find or create the new user
+
 	options, session, err := webAuthn.BeginRegistration(user)
 	// handle errors if present
 

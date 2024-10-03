@@ -106,13 +106,13 @@ func (c Credential) Verify(mds metadata.Provider) (err error) {
 
 	raw := &protocol.AuthenticatorAttestationResponse{
 		AuthenticatorResponse: protocol.AuthenticatorResponse{
-			ClientDataJSON: c.Attestation.ClientDataJSON,
+			ClientDataJSON: c.Attestation.ClientDataJSON, //challenge
 		},
 		Transports:         make([]string, len(c.Transport)),
 		AuthenticatorData:  c.Attestation.AuthenticatorData,
-		PublicKey:          c.PublicKey,
-		PublicKeyAlgorithm: c.Attestation.PublicKeyAlgorithm,
-		AttestationObject:  c.Attestation.Object,
+		PublicKey:          c.PublicKey,                      //public key
+		PublicKeyAlgorithm: c.Attestation.PublicKeyAlgorithm, //algorithm
+		AttestationObject:  c.Attestation.Object,             //signature
 	}
 
 	for i, transport := range c.Transport {

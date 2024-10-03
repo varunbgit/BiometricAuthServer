@@ -28,6 +28,15 @@ func ParseAttestationObject(decoded []byte) (*AttestationObject, error) {
 		fmt.Println("error parseAttestationObject:  ", err)
 		return nil, fmt.Errorf("failed to parse CBOR attestationObject: %w", err)
 	}
+
+	fmt.Printf("Attestation Data.AttStmt: %x\n", attestation.AttStmt)
+	// Extract the signature from attStmt
+	signature, ok := attestation.AttStmt["sig"].([]byte)
+	if !ok {
+		return nil, fmt.Errorf("failed to extract signature from attStmt")
+	}
+
+	fmt.Printf("Signature: %x\n", signature)
 	return &attestation, nil
 }
 

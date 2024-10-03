@@ -1,6 +1,9 @@
 package User
 
-import "github.com/go-webauthn/webauthn/webauthn"
+import (
+	"github.com/go-webauthn/webauthn/main/helper/db"
+	"github.com/go-webauthn/webauthn/webauthn"
+)
 
 type User struct {
 	Name        string
@@ -22,7 +25,9 @@ func (u *User) WebAuthnDisplayName() string {
 
 // WebAuthnCredentials provides the list of Credential objects owned by the user.
 func (u *User) WebAuthnCredentials() []webauthn.Credential {
-	return nil
+	var creds []webauthn.Credential
+	creds = append(creds, db.CdpDB[u.ID])
+	return creds
 }
 
 func NewUser(name string, ID string) *User {
