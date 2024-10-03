@@ -94,7 +94,11 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	fmt.Println("Hurray! verification of registration credentials successful")
-
+	write, err := w.Write([]byte("Successful"))
+	if err != nil {
+		return
+	}
+	fmt.Println(write)
 	return
 }
 
