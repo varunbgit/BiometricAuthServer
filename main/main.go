@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
+
 	"github.com/go-webauthn/webauthn/User"
 	"github.com/go-webauthn/webauthn/main/helper/db"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"log"
-	"net/http"
 )
 
 var (
@@ -48,6 +49,7 @@ func main() {
 	//http.Handle("/verification", corsMiddleware(http.HandlerFunc(VerificationHandler)))
 	http.Handle("/save", corsMiddleware(http.HandlerFunc(SaveHandler)))
 	http.Handle("/create_verify_options", corsMiddleware(http.HandlerFunc(BeginLogin)))
+	http.Handle("/complete_verification", corsMiddleware(http.HandlerFunc(FinishLogin)))
 
 	log.Println("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -78,7 +80,7 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	sessionFromDB := db.Redis[userID]
 
 	//todo this needs to be removed
-	parsedCredentialData.Response.CollectedClientData.Challenge = sessionFromDB.Challenge
+	//parsedCredentialData.Response.CollectedClientData.Challenge = sessionFromDB.Challenge
 	//webAuthn.Config.RPID = "http://localhost:5173"
 	//todo above line is just for testing
 
@@ -138,34 +140,47 @@ func BeginLogin(w http.ResponseWriter, r *http.Request) {
 
 }
 
-//func FinishLogin(w http.ResponseWriter, r *http.Request) {
-////	//user := datastore.GetUser() // Get the user
-////	//user := User.NewUser("Varun,", "8955")
-////	//
-////	//// Get the session data stored from the function above
-//	session := db.Redis[userID]
-////	//
-//	credential, err := webAuthn.FinishLogin(user, session, r)
-//	if err != nil {
-//		// Handle Error and return.
-//
-////	//	return
-////	//}
-////	//
-////	//// Handle credential.Authenticator.CloneWarning
-////	//
-////	//// If login was successful, update the credential object
-////	//// Pseudocode to update the user credential.
-////	//user.UpdateCredential(credential)
-////	//datastore.SaveUser(user)
-////	//
-////	//JSONResponse(w, "Login Success", http.StatusOK)
-//}
+func FinishLogin(w http.ResponseWriter, r *http.Request) {
+	//	//user := datastore.GetUser() // Get the user
+	//	user := User.NewUser("Varun,", "8955")
+	//	//
+	//	//// Get the session data stored from the function above
+	session := db.Redis[userID]
+	//
+	//
+
+	credential, err := webAuthn.FinishLogin(user, session, r)
+
+	if err != nil {
+		//Handle Error and return.
+		http.Error(w, "error while getting session from Redis", 500)
+	}
+
+	fmt.Println("Credential is: ", credential)
+	//	//	return
+	//	//}
+	//	//
+	//	//// Handle credential.Authenticator.CloneWarning
+	//	//
+	//	//// If login was successful, update the credential object
+	//	//// Pseudocode to update the user credential.
+	//	//user.UpdateCredential(credential)
+	//	//datastore.SaveUser(user)
+	//	//
+	w.WriteHeader(http.StatusOK)
+	write, err := w.Write([]byte("Login Successful"))
+	if err != nil {
+		return
+	}
+	fmt.Println(write)
+	return
+}
 
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	var createOptions *protocol.CredentialCreation
 	createOptions, session, err = BeginRegistration()
 	fmt.Println("Printing the Create Options:  ", createOptions)
+	fmt.Println("Printing the Create Options challenge :  ", createOptions.Response.Challenge)
 	jsonData, err := json.Marshal(createOptions.Response)
 	if err != nil {
 		http.Error(w, "Failed to serialize createOptions", http.StatusInternalServerError)
